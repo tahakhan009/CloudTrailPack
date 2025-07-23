@@ -1,7 +1,6 @@
 output: default
 asyncFuncTimeout: 1000
 description: CloudTrail log to CEF pipeline
-
 groups:
   cef_group:
     name: CEF Serialization
@@ -13,12 +12,11 @@ functions:
     filter: "true"
     disabled: false
     conf:
-      comment: >
+      comment: >-
         This pipeline processes AWS CloudTrail logs and outputs CEF format.
-
-        Key steps:
-        1. Extract JSON fields from raw log
-        2. Map essential fields to CEF structure
+        Steps:
+        1. Extract JSON fields from _raw
+        2. Map key fields to CEF
         3. Serialize into CEF format string in _raw
 
   - id: serde
@@ -28,7 +26,7 @@ functions:
       mode: extract
       type: json
       srcField: _raw
-    description: Extract CloudTrail fields from JSON string
+    description: Extract JSON fields from CloudTrail log
 
   - id: eval
     filter: "true"
@@ -44,12 +42,12 @@ functions:
         - name: device_version
           value: '1.0'
         - name: signature_id
-          value: eventName
+          value: eventName || 'unknownEvent'
         - name: name
-          value: eventName
+          value: eventName || 'unknownEvent'
         - name: severity
           value: '5'
-    description: Map CloudTrail fields to CEF format fields
+    description: Map fields to CEF headers
 
   - id: serialize
     filter: "true"
@@ -57,9 +55,9 @@ functions:
     conf:
       dstField: _raw
       type: format
-      format: >
-        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress} dst=${recipientAccountId} suser=${userIdentity.userName} request=${requestParameters} msg=${eventName} dvc=${awsRegion} rt=${eventTime}
-    description: Build the CEF string using CloudTrail fields
+      format: >-
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress || '0.0.0.0'} dst=${recipientAccountId || 'unknown'} suser=${userIdentity?.userName || 'unknownUser'} request=${requestParameters || 'none'} msg=${eventName || 'NoMessage'} dvc=${awsRegion || 'unknown'} rt=${eventTime || ''} 
+    description: Format CloudTrail log as CEF
     groupId: cef_group
 
   - id: eval
@@ -68,11 +66,11 @@ functions:
     conf:
       add:
         - name: sourcetype
-          value: 'aws:cloudtrail:cef'
+          value: sourcetype || 'aws:cloudtrail:cef'
         - name: source
-          value: "source || 'aws:cloudtrail'"
+          value: source || 'aws:cloudtrail'
         - name: index
-          value: "index || 'default'"
+          value: index || 'default'
       keep:
         - _time
         - index
@@ -81,4 +79,4 @@ functions:
         - sourcetype
       remove:
         - _raw
-    description: Finalize metadata fields for output
+    description: Add final metadata fields
