@@ -1,0 +1,83 @@
+output: default
+asyncFuncTimeout: 1000
+description: CloudTrail log to CEF pipeline
+groups:
+  cef_group:
+    name: CEF Serialization
+    description: Reconstruct event in CEF format
+    index: 9
+functions:
+  - id: comment
+    filter: "true"
+    disabled: false
+    conf:
+      comment: >-
+        This pipeline processes AWS CloudTrail logs and outputs CEF format.
+
+        Key steps:
+        1. Extract JSON fields from raw log
+        2. Map essential fields to CEF structure
+        3. Serialize into CEF format string in _raw
+
+  - id: serde
+    filter: "true"
+    disabled: false
+    conf:
+      mode: extract
+      type: json
+      srcField: _raw
+    description: Extract CloudTrail fields from JSON string
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: cef_version
+          value: '0'
+        - name: device_vendor
+          value: 'Amazon'
+        - name: device_product
+          value: 'CloudTrail'
+        - name: device_version
+          value: '1.0'
+        - name: signature_id
+          value: eventName
+        - name: name
+          value: eventName
+        - name: severity
+          value: '5'
+    description: Map CloudTrail fields to CEF format fields
+
+  - id: serialize
+    filter: "true"
+    disabled: false
+    conf:
+      dstField: _raw
+      type: format
+      format: >-
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress} dst=${recipientAccountId} suser=${userIdentity.userName} request=${requestParameters} msg=${eventName} dvc=${awsRegion} rt=${eventTime}
+    description: Build the CEF string using CloudTrail fields
+    groupId: cef_group
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: sourcetype
+          value: 'aws:cloudtrail:cef'
+        - name: source
+          value: source || 'aws:cloudtrail'
+        - name: index
+          value: index || 'default'
+      keep:
+        - _raw
+        - _time
+        - index
+        - host
+        - source
+        - sourcetype
+      remove:
+        - "*"
+    description: Finalize metadata fields for output

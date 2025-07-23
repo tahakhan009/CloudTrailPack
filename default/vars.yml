@@ -1,0 +1,41 @@
+cloudtrail_default_index:
+  type: string
+  lib: custom
+  value: "'cloudtrail_cef_logs'"
+  description: The default index field for CloudTrail CEF logs
+  tags: [cloudtrail, cef]
+
+cloudtrail_default_source:
+  type: string
+  lib: custom
+  value: "'aws:cloudtrail'"
+  description: The default source field for CloudTrail CEF logs
+  tags: [cloudtrail, cef]
+
+cloudtrail_use_event_name_as_device_action:
+  type: boolean
+  lib: custom
+  value: "true"
+  description: If true, sets the CEF `deviceAction` field to the CloudTrail `eventName`
+  tags: [cloudtrail, cef]
+
+cloudtrail_cef_vendor:
+  type: string
+  lib: custom
+  value: "'Amazon'"
+  description: CEF device vendor (dvc)
+  tags: [cloudtrail, cef]
+
+cloudtrail_cef_product:
+  type: string
+  lib: custom
+  value: "'CloudTrail'"
+  description: CEF device product (CloudTrail)
+  tags: [cloudtrail, cef]
+
+cloudtrail_cef_version:
+  type: string
+  lib: custom
+  value: "'1.0'"
+  description: Version value used in CEF header
+  tags: [cloudtrail, cef]

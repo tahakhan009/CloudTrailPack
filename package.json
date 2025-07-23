@@ -1,0 +1,1 @@
+{"name":"aws-seclake-ocsf-to-cef","version":"1.0.0","author":"Taha Khan","description":"Process, reduce, and transform Cloud Train Logs OCSF to CEF.","displayName":"Security Lake","tags":{"dataType":["logs"],"useCase":["reduction","filtering"],"technology":["aws","azure"]}}
