@@ -1,17 +1,19 @@
 output: default
 asyncFuncTimeout: 1000
 description: CloudTrail log to CEF pipeline
+
 groups:
   cef_group:
     name: CEF Serialization
     description: Reconstruct event in CEF format
     index: 9
+
 functions:
   - id: comment
     filter: "true"
     disabled: false
     conf:
-      comment: >-
+      comment: >
         This pipeline processes AWS CloudTrail logs and outputs CEF format.
 
         Key steps:
@@ -55,7 +57,7 @@ functions:
     conf:
       dstField: _raw
       type: format
-      format: >-
+      format: >
         CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress} dst=${recipientAccountId} suser=${userIdentity.userName} request=${requestParameters} msg=${eventName} dvc=${awsRegion} rt=${eventTime}
     description: Build the CEF string using CloudTrail fields
     groupId: cef_group
@@ -68,16 +70,15 @@ functions:
         - name: sourcetype
           value: 'aws:cloudtrail:cef'
         - name: source
-          value: source || 'aws:cloudtrail'
+          value: "source || 'aws:cloudtrail'"
         - name: index
-          value: index || 'default'
+          value: "index || 'default'"
       keep:
-        - _raw
         - _time
         - index
         - host
         - source
         - sourcetype
       remove:
-        - "*"
+        - _raw
     description: Finalize metadata fields for output
