@@ -1,53 +1,81 @@
-description: OCSF to CEF Conversion Pipeline
-enabled: true
+output: default
+asyncFuncTimeout: 1000
+description: OCSF to CEF conversion pipeline
 groups:
   cef_group:
     name: CEF Serialization
-    description: Convert OCSF logs to CEF format
+    description: Serialize OCSF log to CEF format
     index: 9
-    functions:
-      - id: eval_rename_fields
-        type: Eval
-        enabled: true
-        conf:
-          expressions:
-            device_vendor: '"Amazon"'
-            device_product: 'metadata?.product?.name || "UnknownProduct"'
-            device_version: 'metadata?.product?.version || "1.0"'
-            signature_id: 'event_name || metadata?.feature?.name || "unknownEvent"'
-            name: 'event_name || metadata?.feature?.name || "unknownEvent"'
-            severity: 'severity_id?.toString() || "5"'
-      - id: serialize_cef
-        type: SerializeCEF
-        enabled: true
-        conf:
-          cefVersion: '0'
-          deviceVendor: '${device_vendor}'
-          deviceProduct: '${device_product}'
-          deviceVersion: '${device_version}'
-          signatureID: '${signature_id}'
-          name: '${name}'
-          severity: '${severity}'
-          extensions:
-            - src: "src_endpoint?.ip"
-              key: "src"
-            - src: "dst_endpoint?.ip"
-              key: "dst"
-            - src: "time"
-              key: "start"
-            - src: "actor?.user?.name"
-              key: "suser"
-            - src: "actor?.session?.id"
-              key: "cs1"
-            - src: "metadata?.event_code"
-              key: "eventId"
-      - id: set_output_fields
-        type: Eval
-        enabled: true
-        conf:
-          expressions:
-            _raw: 'output'
-            sourcetype: '"aws:ocsf:cef"'
-            source: '"aws:ocsf"'
-            index: '"default"'
-            cribl_pipe: '"ocsf_to_cef"'
+
+functions:
+  - id: comment
+    filter: "true"
+    disabled: false
+    conf:
+      comment: >
+        This pipeline converts OCSF logs to CEF format.
+        Steps:
+        1. Deserialize JSON (_raw)
+        2. Map key OCSF fields to CEF header
+        3. Format to CEF string
+
+  - id: serde
+    filter: "true"
+    disabled: false
+    conf:
+      mode: extract
+      type: json
+      srcField: _raw
+    description: Extract JSON fields from OCSF
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: cef_version
+          value: '0'
+        - name: device_vendor
+          value: metadata?.product?.vendor_name || 'UnknownVendor'
+        - name: device_product
+          value: metadata?.product?.name || 'UnknownProduct'
+        - name: device_version
+          value: metadata?.product?.version || '1.0'
+        - name: signature_id
+          value: event_name || metadata?.feature?.name || 'unknownEvent'
+        - name: name
+          value: event_name || metadata?.feature?.name || 'unknownEvent'
+        - name: severity
+          value: severity_id?.toString() || '5'
+    description: Map OCSF fields to CEF headers
+
+  - id: serialize
+    filter: "true"
+    disabled: false
+    conf:
+      dstField: _raw
+      type: format
+      format: >
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${src_endpoint?.ip || '0.0.0.0'} dst=${dst_endpoint?.ip || '0.0.0.0'} suser=${actor?.user?.name || 'unknown'} duser=${target?.user?.name || 'unknown'} msg=${message || 'No message'} rt=${time || ''} cat=${class_uid || 'unknown'}
+    description: Serialize to CEF format
+    groupId: cef_group
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: sourcetype
+          value: "'ocsf:cef'"
+        - name: source
+          value: "'ocsf:log'"
+        - name: index
+          value: "'default'"
+      keep:
+        - _time
+        - index
+        - host
+        - source
+        - sourcetype
+        - _raw
+    description: Set final metadata fields
