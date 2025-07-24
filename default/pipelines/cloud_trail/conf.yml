@@ -1,57 +1,64 @@
-name: OCSF_to_CEF
-description: "Convert OCSF-formatted logs (e.g. AWS CloudTrail) to CEF format"
+id: ocsf_to_cef_pipeline
+name: OCSF to CEF Pipeline
+description: Convert AWS OCSF logs to CEF format
 groups:
-  cef_conversion:
-    name: OCSF to CEF
-    description: Extract fields and format as CEF
-    index: 1
+  cef_group:
+    name: CEF Serialization Group
+    index: 9
+    description: Serialize OCSF to CEF
 
 functions:
-  - id: eval
-    filter: '_raw != null'
+  - id: eval_metadata
+    type: Eval
     conf:
-      expressions:
-        - cribl_breaker: '"Break on newlines"'
-        - cef_version: '"0"'
-        - device_vendor: '"Amazon"'
-        - device_product: 'metadata?.product?.name || "UnknownProduct"'
-        - device_version: 'metadata?.product?.version || "1.0"'
-        - signature_id: 'event_name || metadata?.feature?.name || "unknownEvent"'
-        - name: 'event_name || metadata?.feature?.name || "unknownEvent"'
-        - severity: 'metadata?.severity_id?.toString() || "5"'
-        - raw_event_time: 'time || time_dt'
-        - source: '"aws:ocsf"'
-        - sourcetype: '"aws:ocsf:cef"'
-        - index: '"default"'
+      add_fields:
+        - name: signature_id
+          value: 'event_code || "_" || cloud?.region || "_" || metadata?.product?.name'
+        - name: name
+          value: 'metadata?.feature?.name || "unknownEvent"'
+        - name: device_vendor
+          value: 'metadata?.product?.vendor_name || "Amazon"'
+        - name: device_product
+          value: 'metadata?.product?.name || "UnknownProduct"'
+        - name: device_version
+          value: 'metadata?.product?.version || "1.0"'
+        - name: severity
+          value: 'severity_id || "5"'
+        - name: cef_version
+          value: '"0"'
+        - name: _cef_ext
+          value: '{
+            "src": cloud?.region,
+            "act": event_name,
+            "dvc": cloud?.account_id,
+            "suser": identity?.user?.name,
+            "cs1": metadata?.feature?.name,
+            "cs1Label": "FeatureName",
+            "cs2": metadata?.product?.name,
+            "cs2Label": "ProductName"
+          }'
 
   - id: serialize_cef
-    filter: '_raw != null'
+    type: SerializeCEF
     conf:
-      versionField: 'cef_version'
-      deviceVendorField: 'device_vendor'
-      deviceProductField: 'device_product'
-      deviceVersionField: 'device_version'
-      signatureIdField: 'signature_id'
-      nameField: 'name'
-      severityField: 'severity'
-      extensionFields:
-        - event_name
-        - user?.uid
-        - user?.name
-        - src_endpoint?.ip
-        - dst_endpoint?.ip
-        - cloud?.region
-        - cloud?.account?.uid
-        - metadata?.product?.name
-        - metadata?.feature?.name
-        - time_dt
-        - time
-      outputField: '_raw'
-      charset: 'UTF-8'
-      emptyFieldValue: '-'
-      extensionFormat: 'keyvalue'
+      version_field: cef_version
+      signature_id_field: signature_id
+      name_field: name
+      severity_field: severity
+      vendor_field: device_vendor
+      product_field: device_product
+      product_version_field: device_version
+      extension_field: _cef_ext
 
-  - id: drop
-    filter: 'false'
-    conf: {}
+  - id: set_source_index
+    type: Eval
+    conf:
+      add_fields:
+        - name: sourcetype
+          value: '"aws:ocsf:cef"'
+        - name: source
+          value: '"aws:ocsf"'
+        - name: index
+          value: '"default"'
 
+output: default
