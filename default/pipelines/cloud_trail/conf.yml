@@ -1,10 +1,11 @@
-output: default
-asyncFuncTimeout: 1000
-description: CloudTrail log to CEF pipeline
+id: ocsf_to_cef
+name: OCSF to CEF Conversion Pipeline
+description: Convert AWS OCSF logs to CEF format for use with SIEMs like Sentinel or Splunk.
+enabled: true
 groups:
   cef_group:
     name: CEF Serialization
-    description: Reconstruct event in CEF format
+    description: Reconstruct OCSF event in CEF format
     index: 9
 
 functions:
@@ -12,23 +13,25 @@ functions:
     filter: "true"
     disabled: false
     conf:
-      comment: >-
-        This pipeline processes AWS CloudTrail logs and outputs CEF format.
+      comment: >
+        This pipeline processes OCSF logs and outputs CEF format.
         Steps:
-        1. Extract JSON fields from _raw
-        2. Map key fields to CEF
+        1. Extract JSON from _raw
+        2. Map OCSF fields to CEF headers
         3. Serialize into CEF format string in _raw
 
   - id: serde
+    type: serde
     filter: "true"
     disabled: false
     conf:
       mode: extract
       type: json
       srcField: _raw
-    description: Extract JSON fields from CloudTrail log
+    description: Extract JSON from OCSF log
 
   - id: eval
+    type: eval
     filter: "true"
     disabled: false
     conf:
@@ -36,39 +39,41 @@ functions:
         - name: cef_version
           value: '0'
         - name: device_vendor
-          value: 'Amazon'
+          value: metadata.product.vendor_name || 'UnknownVendor'
         - name: device_product
-          value: 'CloudTrail'
+          value: metadata.product.name || 'UnknownProduct'
         - name: device_version
-          value: '1.0'
+          value: metadata.product.version || '1.0'
         - name: signature_id
-          value: eventName || 'unknownEvent'
+          value: metadata.event_code || 'UnknownEventCode'
         - name: name
-          value: eventName || 'unknownEvent'
+          value: activity_name || type_name || 'OCSF Event'
         - name: severity
-          value: '5'
-    description: Map fields to CEF headers
+          value: severity_id || '5'
+    description: Map OCSF fields to CEF headers
 
   - id: serialize
+    type: serialize
     filter: "true"
     disabled: false
     conf:
       dstField: _raw
       type: format
-      format: >-
-        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress || '0.0.0.0'} dst=${recipientAccountId || 'unknown'} suser=${userIdentity?.userName || 'unknownUser'} request=${requestParameters || 'none'} msg=${eventName || 'NoMessage'} dvc=${awsRegion || 'unknown'} rt=${eventTime || ''} 
-    description: Format CloudTrail log as CEF
+      format: >
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${src_endpoint?.ip || src_endpoint?.domain || 'unknown'} suser=${actor?.user?.uid || 'unknown'} cs1Label=Operation cs1=${api?.operation || 'N/A'} cs2Label=Service cs2=${api?.service?.name || 'N/A'} cs3Label=Key cs3=${resources[0]?.uid || 'N/A'} cs4Label=SessionIssuer cs4=${actor?.session?.issuer || 'N/A'} cs5Label=UserAgent cs5=${http_request?.user_agent || 'N/A'} act=${activity_name || 'N/A'} outcome=${status || 'unknown'} dvc=${cloud?.region || 'unknown'}
+    description: Serialize into CEF format
     groupId: cef_group
 
-  - id: eval
+  - id: eval_metadata
+    type: eval
     filter: "true"
     disabled: false
     conf:
       add:
         - name: sourcetype
-          value: sourcetype || 'aws:cloudtrail:cef'
+          value: sourcetype || 'aws:ocsf:cef'
         - name: source
-          value: source || 'aws:cloudtrail'
+          value: source || 'aws:ocsf'
         - name: index
           value: index || 'default'
       keep:
@@ -79,4 +84,4 @@ functions:
         - sourcetype
       remove:
         - _raw
-    description: Add final metadata fields
+    description: Final cleanup and metadata enrichment
