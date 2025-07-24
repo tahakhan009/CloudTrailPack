@@ -1,6 +1,6 @@
 output: default
 asyncFuncTimeout: 1000
-description: OCSF log to CEF pipeline
+description: OCSF CloudTrail to CEF pipeline
 groups:
   cef_group:
     name: CEF Serialization
@@ -13,7 +13,8 @@ functions:
     disabled: false
     conf:
       comment: >-
-        This pipeline processes OCSF logs and outputs CEF format.
+        This pipeline processes OCSF-formatted AWS CloudTrail logs
+        and outputs them in CEF format.
 
   - id: serde
     filter: "true"
@@ -22,7 +23,7 @@ functions:
       mode: extract
       type: json
       srcField: _raw
-    description: Extract JSON fields from OCSF
+    description: Extract JSON fields from _raw
 
   - id: eval
     filter: "true"
@@ -34,15 +35,15 @@ functions:
         - name: device_vendor
           value: metadata?.vendor_name || 'AWS'
         - name: device_product
-          value: metadata?.product?.name || 'SecurityLake'
+          value: metadata?.product?.name || 'CloudTrail'
         - name: device_version
           value: metadata?.product?.version || '1.0'
         - name: signature_id
-          value: metadata?.event_code || 'unknown'
+          value: event_name || metadata?.feature?.name || 'unknownEvent'
         - name: name
-          value: metadata?.feature?.name || 'unknownEvent'
+          value: event_name || metadata?.feature?.name || 'unknownEvent'
         - name: severity
-          value: metadata?.severity_id || '5'
+          value: '5'
     description: Map OCSF fields to CEF headers
 
   - id: serialize
@@ -52,14 +53,8 @@ functions:
       dstField: _raw
       type: format
       format: >-
-        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|
-        src=${src_endpoint?.ip || '0.0.0.0'} 
-        dst=${dst_endpoint?.ip || '0.0.0.0'} 
-        suser=${actor?.user?.name || 'unknownUser'} 
-        msg=${metadata?.event_name || 'NoMessage'} 
-        rt=${time_dt || ''} 
-        dvc=${cloud?.region || 'unknown'}
-    description: Format OCSF log as CEF
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${cloud?.client_ip || source_endpoint?.ip || '0.0.0.0'} dst=${cloud?.account_id || 'unknown'} suser=${actor?.name || 'unknownUser'} request=${request?.parameters || 'none'} msg=${message || 'NoMessage'} dvc=${cloud?.region || 'unknown'} rt=${time || ''}
+    description: Serialize to CEF format
     groupId: cef_group
 
   - id: eval
@@ -79,5 +74,6 @@ functions:
         - host
         - source
         - sourcetype
+      remove:
         - _raw
-    description: Final field cleanup and metadata prep
+    description: Set Cribl metadata fields
