@@ -1,59 +1,10 @@
-- id: cloudtrail_cef
-  name: CloudTrail to CEF
+- id: cloudtrail_ocsf_to_cef
+  name: CloudTrail OCSF to CEF
   final: true
   disabled: false
-  pipeline: cloudtrail_cef
-  description: Converts AWS CloudTrail OCSF to CEF
+  pipeline: ocsf_to_cef
+  description: Converts AWS CloudTrail in OCSF format to CEF
   clones: []
-  filter: _raw.indexOf('"eventClass":"CloudTrail"') > -1
+  # Adjust this filter as needed to match OCSF events only
+  filter: _raw.indexOf('"product":{"name":"CloudTrail"') > -1 && _raw.indexOf('"event_code":"AwsApiCall"') > -1
   output: default
-  nodes:
-    - id: extract
-      name: Extract CloudTrail Fields
-      type: Extract
-      description: Extract CloudTrail fields from JSON string
-      enabled: true
-      code: |
-        let event = event.get("_raw");
-        if (event) {
-          return JSON.parse(event);
-        }
-        return {};
-    - id: cef_format
-      name: Convert to CEF
-      type: Function
-      description: Format CloudTrail logs from OCSF to CEF
-      enabled: true
-      code: |
-        let cef_version = "CEF:0";
-        let vendor = "Amazon";
-        let product = "AWS CloudTrail";
-        let version = "1.0";
-
-        let signature_id = event.get("eventName") || "unknown";
-        let name = event.get("eventType") || "AWS API Call";
-        let severity = event.get("severity") || "5";
-
-        let cef_header = `${cef_version}|${vendor}|${product}|${version}|${signature_id}|${name}|${severity}|`;
-
-        let cef_extension = [
-          `src=${event.get("sourceIPAddress") || "-"}`,
-          `dst=${event.get("recipientAccountId") || "-"}`,
-          `suser=${event.get("userIdentity.userName") || "-"}`,
-          `request=${event.get("requestParameters") || "-"}`,
-          `msg=${event.get("eventName") || "-"}`,
-          `dvc=${event.get("awsRegion") || "-"}`,
-          `rt=${event.get("eventTime") || "-"}`
-        ].join(" ");
-
-        event.set("_raw", `${cef_header}${cef_extension}`);
-        return event;
-    - id: finalize_metadata
-      name: Finalize Metadata
-      type: Function
-      description: Finalize metadata fields for output
-      enabled: true
-      code: |
-        event.set("sourcetype", "aws:cloudtrail:cef");
-        event.set("source", event.get("source") || "aws:cloudtrail");
-        event.set("index", event.get("index") || "default");    

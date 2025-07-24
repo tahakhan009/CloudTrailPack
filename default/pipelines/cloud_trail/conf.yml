@@ -1,45 +1,82 @@
-version: '3'
-name: OCSF_to_CEF_Convert
-description: Convert OCSF format to CEF
+output: default
+asyncFuncTimeout: 1000
+description: CloudTrail log to CEF pipeline
 groups:
-  - name: CEF_Conversion
-    description: Convert AWS OCSF to CEF format
-    functions:
-      - id: Eval_Fields
-        type: Eval
-        conf:
-          expressions:
-            cef_version: '"CEF:0"'
-            device_vendor: '"AWS"'
-            device_product: metadata.product.name
-            device_version: metadata.product.version
-            signature_id: metadata.event_code
-            name: api.name
-            severity: tostring(severity.id)
-            act: api.name
-            rt: tostring(time)
-            src: actor.invoked_by
-            dvc: cloud.region
-            suser: actor.user.uid
-            cs1Label: '"EventCode"'
-            cs1: metadata.event_code
-            cs2Label: '"Type"'
-            cs2: type_name
-            cs3Label: '"Status"'
-            cs3: api.status
-      - id: Serialize_to_CEF
-        type: Eval
-        conf:
-          expressions:
-            _raw: |
-              cef_version + "|" +
-              device_vendor + "|" +
-              device_product + "|" +
-              device_version + "|" +
-              signature_id + "|" +
-              name + "|" +
-              severity + "|" +
-              "act=" + act + " rt=" + rt + " src=" + src + " dvc=" + dvc + " suser=" + suser +
-              " cs1Label=" + cs1Label + " cs1=" + cs1 + 
-              " cs2Label=" + cs2Label + " cs2=" + cs2 + 
-              " cs3Label=" + cs3Label + " cs3=" + cs3
+  cef_group:
+    name: CEF Serialization
+    description: Reconstruct event in CEF format
+    index: 9
+
+functions:
+  - id: comment
+    filter: "true"
+    disabled: false
+    conf:
+      comment: >-
+        This pipeline processes AWS CloudTrail logs and outputs CEF format.
+        Steps:
+        1. Extract JSON fields from _raw
+        2. Map key fields to CEF
+        3. Serialize into CEF format string in _raw
+
+  - id: serde
+    filter: "true"
+    disabled: false
+    conf:
+      mode: extract
+      type: json
+      srcField: _raw
+    description: Extract JSON fields from CloudTrail log
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: cef_version
+          value: '0'
+        - name: device_vendor
+          value: 'Amazon'
+        - name: device_product
+          value: 'CloudTrail'
+        - name: device_version
+          value: '1.0'
+        - name: signature_id
+          value: eventName || 'unknownEvent'
+        - name: name
+          value: eventName || 'unknownEvent'
+        - name: severity
+          value: '5'
+    description: Map fields to CEF headers
+
+  - id: serialize
+    filter: "true"
+    disabled: false
+    conf:
+      dstField: _raw
+      type: format
+      format: >-
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${sourceIPAddress || '0.0.0.0'} dst=${recipientAccountId || 'unknown'} suser=${userIdentity?.userName || 'unknownUser'} request=${requestParameters || 'none'} msg=${eventName || 'NoMessage'} dvc=${awsRegion || 'unknown'} rt=${eventTime || ''} 
+    description: Format CloudTrail log as CEF
+    groupId: cef_group
+
+  - id: eval
+    filter: "true"
+    disabled: false
+    conf:
+      add:
+        - name: sourcetype
+          value: sourcetype || 'aws:cloudtrail:cef'
+        - name: source
+          value: source || 'aws:cloudtrail'
+        - name: index
+          value: index || 'default'
+      keep:
+        - _time
+        - index
+        - host
+        - source
+        - sourcetype
+      remove:
+        - _raw
+    description: Add final metadata fields
