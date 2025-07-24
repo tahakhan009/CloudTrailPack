@@ -10,6 +10,7 @@ groups:
 
 functions:
   - id: comment
+    type: comment
     filter: "true"
     disabled: false
     conf:
@@ -30,7 +31,7 @@ functions:
       srcField: _raw
     description: Extract JSON from OCSF log
 
-  - id: eval
+  - id: eval_headers
     type: eval
     filter: "true"
     disabled: false
@@ -52,7 +53,7 @@ functions:
           value: severity_id || '5'
     description: Map OCSF fields to CEF headers
 
-  - id: serialize
+  - id: serialize_cef
     type: serialize
     filter: "true"
     disabled: false
