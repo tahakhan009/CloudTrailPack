@@ -1,10 +1,10 @@
 output: default
 asyncFuncTimeout: 1000
-description: OCSF to CEF conversion pipeline
+description: OCSF log to CEF pipeline
 groups:
   cef_group:
     name: CEF Serialization
-    description: Serialize OCSF log to CEF format
+    description: Reconstruct event in CEF format
     index: 9
 
 functions:
@@ -12,12 +12,8 @@ functions:
     filter: "true"
     disabled: false
     conf:
-      comment: >
-        This pipeline converts OCSF logs to CEF format.
-        Steps:
-        1. Deserialize JSON (_raw)
-        2. Map key OCSF fields to CEF header
-        3. Format to CEF string
+      comment: >-
+        This pipeline processes OCSF logs and outputs CEF format.
 
   - id: serde
     filter: "true"
@@ -36,17 +32,17 @@ functions:
         - name: cef_version
           value: '0'
         - name: device_vendor
-          value: metadata?.product?.vendor_name || 'UnknownVendor'
+          value: metadata?.vendor_name || 'AWS'
         - name: device_product
-          value: metadata?.product?.name || 'UnknownProduct'
+          value: metadata?.product?.name || 'SecurityLake'
         - name: device_version
           value: metadata?.product?.version || '1.0'
         - name: signature_id
-          value: event_name || metadata?.feature?.name || 'unknownEvent'
+          value: metadata?.event_code || 'unknown'
         - name: name
-          value: event_name || metadata?.feature?.name || 'unknownEvent'
+          value: metadata?.feature?.name || 'unknownEvent'
         - name: severity
-          value: severity_id?.toString() || '5'
+          value: metadata?.severity_id || '5'
     description: Map OCSF fields to CEF headers
 
   - id: serialize
@@ -55,9 +51,15 @@ functions:
     conf:
       dstField: _raw
       type: format
-      format: >
-        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${src_endpoint?.ip || '0.0.0.0'} dst=${dst_endpoint?.ip || '0.0.0.0'} suser=${actor?.user?.name || 'unknown'} duser=${target?.user?.name || 'unknown'} msg=${message || 'No message'} rt=${time || ''} cat=${class_uid || 'unknown'}
-    description: Serialize to CEF format
+      format: >-
+        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|
+        src=${src_endpoint?.ip || '0.0.0.0'} 
+        dst=${dst_endpoint?.ip || '0.0.0.0'} 
+        suser=${actor?.user?.name || 'unknownUser'} 
+        msg=${metadata?.event_name || 'NoMessage'} 
+        rt=${time_dt || ''} 
+        dvc=${cloud?.region || 'unknown'}
+    description: Format OCSF log as CEF
     groupId: cef_group
 
   - id: eval
@@ -66,11 +68,11 @@ functions:
     conf:
       add:
         - name: sourcetype
-          value: "'ocsf:cef'"
+          value: 'ocsf:cef'
         - name: source
-          value: "'ocsf:log'"
+          value: source || 'ocsf:cloudtrail'
         - name: index
-          value: "'default'"
+          value: index || 'default'
       keep:
         - _time
         - index
@@ -78,4 +80,4 @@ functions:
         - source
         - sourcetype
         - _raw
-    description: Set final metadata fields
+    description: Final field cleanup and metadata prep
