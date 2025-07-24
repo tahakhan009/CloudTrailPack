@@ -1,70 +1,57 @@
-output: default
-asyncFuncTimeout: 1000
-description: OCSF to CEF pipeline
+name: OCSF_to_CEF
+description: "Convert OCSF-formatted logs (e.g. AWS CloudTrail) to CEF format"
 groups:
-  cef_group:
-    name: CEF Serialization
-    description: Reconstruct event in CEF format
-    index: 9
+  cef_conversion:
+    name: OCSF to CEF
+    description: Extract fields and format as CEF
+    index: 1
 
 functions:
-  - id: comment
-    filter: "true"
-    disabled: false
-    conf:
-      comment: >
-        This pipeline converts OCSF-formatted logs (like CloudTrail) to CEF format.
-        Fields are extracted, mapped to CEF headers, and serialized.
-
   - id: eval
-    filter: "true"
-    disabled: false
+    filter: '_raw != null'
     conf:
-      add:
-        - name: cef_version
-          value: "'0'"
-        - name: device_vendor
-          value: "'Amazon'"
-        - name: device_product
-          value: "metadata.product.name || 'UnknownProduct'"
-        - name: device_version
-          value: "metadata.product.version || '1.0'"
-        - name: signature_id
-          value: "event_name || metadata.feature.name || 'unknownEvent'"
-        - name: name
-          value: "event_name || metadata.feature.name || 'unknownEvent'"
-        - name: severity
-          value: "'5'"
-    description: Map OCSF fields to CEF headers
+      expressions:
+        - cribl_breaker: '"Break on newlines"'
+        - cef_version: '"0"'
+        - device_vendor: '"Amazon"'
+        - device_product: 'metadata?.product?.name || "UnknownProduct"'
+        - device_version: 'metadata?.product?.version || "1.0"'
+        - signature_id: 'event_name || metadata?.feature?.name || "unknownEvent"'
+        - name: 'event_name || metadata?.feature?.name || "unknownEvent"'
+        - severity: 'metadata?.severity_id?.toString() || "5"'
+        - raw_event_time: 'time || time_dt'
+        - source: '"aws:ocsf"'
+        - sourcetype: '"aws:ocsf:cef"'
+        - index: '"default"'
 
-  - id: serialize
-    filter: "true"
-    disabled: false
+  - id: serialize_cef
+    filter: '_raw != null'
     conf:
-      dstField: _raw
-      type: format
-      format: >
-        CEF:${cef_version}|${device_vendor}|${device_product}|${device_version}|${signature_id}|${name}|${severity}|src=${cloud.client_ip || '0.0.0.0'} dst=${cloud.account_id || 'unknown'} suser=${user.name || 'unknownUser'} msg=${event_name || metadata.feature.name || 'NoMessage'} dvc=${cloud.region || 'unknown'} rt=${time_dt || time || ''}
-    description: Build the final CEF string
-    groupId: cef_group
+      versionField: 'cef_version'
+      deviceVendorField: 'device_vendor'
+      deviceProductField: 'device_product'
+      deviceVersionField: 'device_version'
+      signatureIdField: 'signature_id'
+      nameField: 'name'
+      severityField: 'severity'
+      extensionFields:
+        - event_name
+        - user?.uid
+        - user?.name
+        - src_endpoint?.ip
+        - dst_endpoint?.ip
+        - cloud?.region
+        - cloud?.account?.uid
+        - metadata?.product?.name
+        - metadata?.feature?.name
+        - time_dt
+        - time
+      outputField: '_raw'
+      charset: 'UTF-8'
+      emptyFieldValue: '-'
+      extensionFormat: 'keyvalue'
 
-  - id: eval
-    filter: "true"
-    disabled: false
-    conf:
-      add:
-        - name: sourcetype
-          value: "'aws:ocsf:cef'"
-        - name: source
-          value: "source || 'aws:ocsf'"
-        - name: index
-          value: "index || 'default'"
-      keep:
-        - _time
-        - index
-        - host
-        - source
-        - sourcetype
-      remove:
-        - _raw
-    description: Add metadata fields
+  - id: drop
+    filter: 'false'
+    conf: {}
+
